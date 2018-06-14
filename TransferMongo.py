@@ -4,6 +4,7 @@ from ConvertHtmlJson import ConvertHtmlJson
 from gridfs import  GridFS
 import bs4, requests
 import urllib
+import os
 import gridfs
 
 class TransferMongo(object):
@@ -23,11 +24,15 @@ class TransferMongo(object):
         :param colname: collection name
         :param html_folder: the folder stores the html files
         """
-        json_docs = ConvertHtmlJson().convert_html2json(html_folder=html_folder)
+        json_docs, folder_files = ConvertHtmlJson().convert_html2json(html_folder=html_folder)
         db = self.client[dbname]
         collection = db[colname]
+        collection_child = db[colname+"_child"]
+
+
         # GridFS collection for large file
         fs = GridFS(db)
+        # store single documents
         for jdoc in json_docs:
             # get file name to check whether the document exist
             fn = jdoc["file_name"]
@@ -46,7 +51,15 @@ class TransferMongo(object):
                         print(fn+" already exist!")
             else:
                 print(fn+" already exist!")
-
+        # store folder documents
+        for fn, sheets in folder_files.items():
+            for sheet in sheets:
+                sn = sheet["sheet_name"]
+                if collection_child.find({'file_name': fn, 'sheet_name':sn}).count() == 0:
+                    collection_child.insert(sheet)
+                    print("Inserted document: " + fn+'/'+sn)
+                else:
+                    print(fn+'/'+sn+ " already exist!")
 
     def fetch_htmlfiles(self, dbname, colname, output_html_folder):
         """
@@ -59,17 +72,35 @@ class TransferMongo(object):
         """
         db = self.client[dbname]
         collection = db[colname]
+        collection_child = db[colname + "_child"]
         htmls = []
         fns = []
         for doc in collection.find({}):
             # extract html string from mongodb
             file_name = doc['file_name']
             file_path = output_html_folder+'/'+file_name
-            html = doc['html_content']
-            fns.append(file_name)
-            htmls.append(html)
-            with open(file_path, 'w') as f:
-                f.write(html)
+
+            # for single file:
+            if doc['html_type'] == "single":
+                html = doc['html_content']
+                fns.append(file_name)
+                htmls.append(html)
+                with open(file_path, 'w') as f:
+                    f.write(html)
+
+            # for multi files:
+            if doc['html_type'] == "multi":
+                # test whether the folder exist, if not create folder:
+                if os.path.isdir(file_path)==False:
+                    os.makedirs(file_path)
+
+                for sheet in collection_child.find({"file_name": file_name}):
+                    sn = sheet["sheet_name"]
+                    sheet_path = output_html_folder+'/'+file_name+'/'+sn
+                    html = sheet["html_content"]
+                    with open(sheet_path, 'w') as f:
+                        f.write(html)
+
         return htmls, fns
 
     def fetch_GridFS(self, dbname, output_html_folder):
@@ -100,12 +131,12 @@ tm.fetch_GridFS(output_html_folder=output_html_folder, dbname="rassure_nltk")
 
 
 # check whether the string extract the html files match with the string extract from mongodb
-def assertion_check():
+"""def assertion_check():
     for i in range(len(fns)):
         file = urllib.request.urlopen('file://' + html_folder + "/" + fns[i])
         soup = bs4.BeautifulSoup(file, "html5lib")
         inserted_html = str(soup)
-        assert inserted_html == str(htmls[i]), ("The string extracted from an inserted html file doesn't match with the html string reverted from mongodb")
+        assert inserted_html == str(htmls[i]), ("The string extracted from an inserted html file doesn't match with the html string reverted from mongodb")"""
 # do an assertion_check
 # Note: this will slow down the code!
 # assertion_check()

@@ -6,3 +6,4 @@
 
 -module ConvertHtmlJson can also output a single json file for mannualy import from mongo shell (e.g. ConvertHtmlJson().convert_html2json(html_folder="/Users/chenjialu/Desktop/Rassure/code/test_html_files", json_path="test.json"))
 
+##### Note: Single large files are stored in GridFS 
